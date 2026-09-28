@@ -1,0 +1,2 @@
+-- BidShield schema placeholder.
+-- Database definitions require a separately approved implementation step.
