@@ -1,4 +1,5 @@
 import { AlertTriangle, ArrowUpRight, CalendarDays, CheckCircle2, Clock3, FileWarning, Plus, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { getDashboardData } from "@/lib/data/dashboard";
 
@@ -26,7 +27,7 @@ export default async function DashboardPage() {
         <div className="mx-auto max-w-7xl">
           <header className="flex flex-col justify-between gap-5 border-b border-white/10 pb-8 md:flex-row md:items-end">
             <div><p className="text-xs font-medium uppercase tracking-[0.22em] text-emerald-400">Command Center</p><h1 className="mt-3 text-3xl font-semibold tracking-tight text-white md:text-4xl">Submission readiness at a glance.</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">Live organisation-scoped tender, evidence, and claim signals from your BidShield workspace.</p></div>
-            <button className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 text-sm font-semibold text-[#07100d] shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300"><Plus aria-hidden="true" className="h-4 w-4" />Add tender</button>
+            <Link href="/tenders/new" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 text-sm font-semibold text-[#07100d] shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300"><Plus aria-hidden="true" className="h-4 w-4" />Add tender</Link>
           </header>
 
           {dashboard.error && <div role="alert" className="mt-6 rounded-2xl border border-red-400/20 bg-red-400/[0.06] px-4 py-3 text-sm text-red-200">Dashboard data could not be loaded: {dashboard.error}</div>}

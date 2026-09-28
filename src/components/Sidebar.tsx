@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileCheck2, LayoutDashboard, ScanSearch, ShieldCheck } from "lucide-react";
+import { ClipboardPlus, FileCheck2, LayoutDashboard, ScanSearch, ShieldCheck } from "lucide-react";
 
 const navigation = [
   { label: "Command Center", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Tender Intake", href: "/tenders/new", icon: ClipboardPlus },
   { label: "Evidence Vault", href: "/vault", icon: FileCheck2 },
   { label: "Shield Scanner", href: "/scanner", icon: ScanSearch }
 ] as const;
