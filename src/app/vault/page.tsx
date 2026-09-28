@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, DragEvent, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
 import {
   Archive,
   ArrowUpRight,
@@ -28,12 +28,18 @@ const categories = [
   { label: "Policy Docs", count: "24 documents", icon: FileText, toneClass: "bg-violet-400/10 text-violet-300" }
 ] as const;
 
-const documents = [
-  { name: "ISO 9001 Certificate.pdf", type: "Accreditation", expiry: "14 Mar 2027", status: "Valid" },
-  { name: "Public Liability Insurance.pdf", type: "Insurance", expiry: "18 Nov 2026", status: "Expiring" },
-  { name: "Audited Accounts FY26.pdf", type: "Financial record", expiry: "No expiry", status: "Valid" },
-  { name: "Carbon Reduction Plan.docx", type: "Policy", expiry: "02 Sep 2026", status: "Expired" }
-] as const;
+type EvidenceDocument = { id: string; name: string; type: string; category: string; expiry: string; status: "Valid" | "Expiring" | "Expired" };
+
+function formatExpiry(expiryDate: string | null) {
+  if (!expiryDate) return "No expiry";
+  return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${expiryDate}T00:00:00Z`));
+}
+
+function getStatus(status: string, expiryDate: string | null): EvidenceDocument["status"] {
+  if (status === "EXPIRED" || (expiryDate && new Date(`${expiryDate}T23:59:59Z`) < new Date())) return "Expired";
+  if (status === "EXPIRING") return "Expiring";
+  return "Valid";
+}
 
 const statusStyles: Record<string, string> = {
   Valid: "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20",
@@ -47,6 +53,18 @@ export default function VaultPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<EvidenceDocument[]>([]);
+
+  const loadDocuments = async () => {
+    const { data, error } = await supabase.from("evidence_vault").select("id, document_name, document_type, category, expiry_date, status").order("created_at", { ascending: false }).limit(100);
+    if (error) {
+      setUploadMessage(`Evidence register could not be loaded: ${error.message}`);
+      return;
+    }
+    setDocuments((data ?? []).map((document) => ({ id: document.id, name: document.document_name, type: document.document_type, category: document.category, expiry: formatExpiry(document.expiry_date), status: getStatus(document.status, document.expiry_date) })));
+  };
+
+  useEffect(() => { void loadDocuments(); }, []);
 
   const chooseFile = (file?: File) => {
     if (!file) return;
@@ -69,17 +87,51 @@ export default function VaultPage() {
 
     setIsUploading(true);
     setUploadMessage(null);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setIsUploading(false);
+      setUploadMessage("Please sign in before uploading evidence.");
+      return;
+    }
+
+    const { data: membership, error: membershipError } = await supabase.from("users").select("organization_id").eq("auth_user_id", user.id).maybeSingle();
+    if (membershipError || !membership) {
+      setIsUploading(false);
+      setUploadMessage("Organisation membership is required before uploading evidence.");
+      return;
+    }
+
     const safeName = selectedFile.name.toLowerCase().replace(/[^a-z0-9.-]+/g, "-");
-    const storagePath = `pending-review/${crypto.randomUUID()}-${safeName}`;
+    const storagePath = `${membership.organization_id}/pending-review/${crypto.randomUUID()}-${safeName}`;
     const { error } = await supabase.storage.from(EVIDENCE_BUCKET).upload(storagePath, selectedFile, {
       cacheControl: "3600",
       contentType: selectedFile.type || "application/octet-stream",
       upsert: false
     });
 
+    if (error) {
+      setIsUploading(false);
+      setUploadMessage("Upload could not be completed. Please retry.");
+      return;
+    }
+
+    const { error: metadataError } = await supabase.from("evidence_vault").insert({
+      organization_id: membership.organization_id,
+      document_name: selectedFile.name,
+      document_type: selectedFile.type || "application/octet-stream",
+      category: "OTHER",
+      storage_path: storagePath,
+      status: "PENDING_REVIEW",
+      provenance_state: "SOURCE",
+      uploaded_by: user.id
+    });
+
     setIsUploading(false);
-    setUploadMessage(error ? "Upload could not be completed. Please retry." : "Uploaded for metadata review.");
-    if (!error) setSelectedFile(null);
+    setUploadMessage(metadataError ? "File uploaded, but metadata persistence needs review." : "Uploaded for metadata review.");
+    if (!metadataError) {
+      setSelectedFile(null);
+      await loadDocuments();
+    }
   };
 
   return (
@@ -149,11 +201,11 @@ export default function VaultPage() {
           <section className="mt-8">
             <div className="flex items-end justify-between"><div><h2 className="text-base font-semibold text-white">Evidence directory</h2><p className="mt-1 text-xs text-slate-500">Organised by the evidence categories used in your tenders</p></div><button className="inline-flex items-center gap-1 text-xs font-medium text-emerald-300 hover:text-emerald-200">Manage categories <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" /></button></div>
             <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {categories.map(({ label, count, icon: Icon, toneClass }) => (
+              {categories.map(({ label, icon: Icon, toneClass }) => (
                 <button key={label} className="group rounded-2xl border border-white/10 bg-white/[0.035] p-5 text-left transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06]">
                   <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${toneClass}`}><Icon aria-hidden="true" className="h-5 w-5" /></div>
                   <div className="mt-5 flex items-center justify-between"><p className="text-sm font-medium text-white">{label}</p><FolderOpen aria-hidden="true" className="h-4 w-4 text-slate-600 transition group-hover:text-slate-300" /></div>
-                  <p className="mt-1 text-xs text-slate-500">{count}</p>
+                  <p className="mt-1 text-xs text-slate-500">{documents.filter((document) => document.category.toLowerCase() === label.toLowerCase().replace("policy docs", "policies").replace("financial records", "financial")).length} documents</p>
                 </button>
               ))}
             </div>
