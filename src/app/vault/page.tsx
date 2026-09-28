@@ -94,7 +94,7 @@ export default function VaultPage() {
       return;
     }
 
-    const { data: membership, error: membershipError } = await supabase.from("users").select("organization_id").eq("auth_user_id", user.id).maybeSingle();
+    const { data: membership, error: membershipError } = await supabase.from("users").select("id, organization_id").eq("auth_user_id", user.id).maybeSingle();
     if (membershipError || !membership) {
       setIsUploading(false);
       setUploadMessage("Organisation membership is required before uploading evidence.");
@@ -123,7 +123,7 @@ export default function VaultPage() {
       storage_path: storagePath,
       status: "PENDING_REVIEW",
       provenance_state: "SOURCE",
-      uploaded_by: user.id
+      uploaded_by: membership.id
     });
 
     setIsUploading(false);

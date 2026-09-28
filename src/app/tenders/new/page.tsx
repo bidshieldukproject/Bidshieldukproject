@@ -57,7 +57,7 @@ export default function NewTenderPage() {
 
     const { data: membership, error: membershipError } = await supabase
       .from("users")
-      .select("organization_id")
+      .select("id, organization_id")
       .eq("auth_user_id", user.id)
       .maybeSingle();
     if (membershipError || !membership) {
@@ -76,7 +76,7 @@ export default function NewTenderPage() {
         deadline: deadline ? new Date(`${deadline}T23:59:59`).toISOString() : null,
         status: "DRAFT",
         provenance_state: "USER_INPUT",
-        created_by: user.id
+        created_by: membership.id
       })
       .select("id")
       .single();
@@ -118,7 +118,7 @@ export default function NewTenderPage() {
       content_hash: contentHash,
       version: "1",
       provenance_state: "SOURCE",
-      uploaded_by: user.id
+      uploaded_by: membership.id
     });
 
     if (documentError) {
