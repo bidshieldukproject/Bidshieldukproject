@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, CalendarDays, CheckCircle2, FileText, LockKeyhole, ShieldCheck, UploadCloud, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { extractTenderPdfPages } from "@/lib/tender/extractPdfText";
 
 const TENDER_BUCKET = "tender-documents";
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
@@ -109,7 +110,7 @@ export default function NewTenderPage() {
       return;
     }
 
-    const { error: documentError } = await supabase.from("tender_documents").insert({
+    const { data: document, error: documentError } = await supabase.from("tender_documents").insert({
       organization_id: membership.organization_id,
       tender_id: tender.id,
       document_name: file.name,
@@ -119,13 +120,49 @@ export default function NewTenderPage() {
       version: "1",
       provenance_state: "SOURCE",
       uploaded_by: membership.id
-    });
+    })
+      .select("id")
+      .single();
 
-    if (documentError) {
+    if (documentError || !document) {
       await supabase.storage.from(TENDER_BUCKET).remove([storagePath]);
       await supabase.from("tenders").delete().eq("id", tender.id);
       setIsSubmitting(false);
       setError("Tender metadata could not be saved. No incomplete tender was kept.");
+      return;
+    }
+
+    await supabase.from("tender_documents").update({ processing_status: "PROCESSING", processing_error: null }).eq("id", document.id);
+
+    try {
+      const extraction = await extractTenderPdfPages(file);
+      const { error: pagesError } = await supabase.from("tender_document_pages").insert(
+        extraction.pages.map((page) => ({
+          organization_id: membership.organization_id,
+          tender_id: tender.id,
+          tender_document_id: document.id,
+          page_number: page.pageNumber,
+          text_content: page.textContent,
+          character_count: page.characterCount,
+          content_hash: page.contentHash,
+          provenance_state: "NORMALIZED",
+          provenance_metadata: { extraction_method: "pdfjs", source_document_hash: contentHash }
+        }))
+      );
+
+      if (pagesError) throw pagesError;
+      await supabase.from("tender_documents").update({
+        page_count: extraction.pageCount,
+        processing_status: extraction.status,
+        processing_error: extraction.status === "OCR_REQUIRED" ? "No readable text was detected; OCR is required." : null,
+        provenance_state: "NORMALIZED",
+        provenance_metadata: { extraction_method: "pdfjs", source_document_hash: contentHash }
+      }).eq("id", document.id);
+    } catch (processingError) {
+      const message = processingError instanceof Error ? processingError.message : "PDF text extraction failed.";
+      await supabase.from("tender_documents").update({ processing_status: "FAILED", processing_error: message }).eq("id", document.id);
+      setIsSubmitting(false);
+      setError("The tender was uploaded, but text extraction failed. You can retry processing later.");
       return;
     }
 

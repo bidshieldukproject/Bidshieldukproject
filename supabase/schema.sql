@@ -106,6 +106,8 @@ create table public.tender_documents (
   content_hash text,
   version text not null default '1',
   page_count integer check (page_count is null or page_count > 0),
+  processing_status text not null default 'UPLOADED' check (processing_status in ('UPLOADED', 'PROCESSING', 'READY', 'OCR_REQUIRED', 'FAILED')),
+  processing_error text,
   provenance_state public.provenance_state not null default 'SOURCE',
   provenance_metadata jsonb not null default '{}'::jsonb,
   uploaded_by uuid references public.users(id) on delete set null,
@@ -113,6 +115,21 @@ create table public.tender_documents (
   updated_at timestamptz not null default timezone('utc', now()),
   unique (id, organization_id),
   unique (organization_id, tender_id, storage_path, version)
+);
+
+create table public.tender_document_pages (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  tender_id uuid not null references public.tenders(id) on delete cascade,
+  tender_document_id uuid not null references public.tender_documents(id) on delete cascade,
+  page_number integer not null check (page_number > 0),
+  text_content text not null default '',
+  character_count integer not null default 0 check (character_count >= 0),
+  content_hash text,
+  provenance_state public.provenance_state not null default 'NORMALIZED',
+  provenance_metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default timezone('utc', now()),
+  unique (tender_document_id, page_number)
 );
 
 create table public.requirements (
@@ -219,6 +236,8 @@ create table public.audit_events (
 
 create index tenders_organization_id_idx on public.tenders(organization_id);
 create index tender_documents_tender_id_idx on public.tender_documents(tender_id, organization_id);
+create index tender_document_pages_document_idx on public.tender_document_pages(tender_document_id, page_number);
+create index tender_document_pages_tender_idx on public.tender_document_pages(tender_id, organization_id, page_number);
 create index requirements_tender_id_idx on public.requirements(tender_id, organization_id);
 create index evidence_vault_expiry_idx on public.evidence_vault(organization_id, expiry_date);
 create index claims_tender_id_idx on public.claims(tender_id, organization_id);
@@ -244,6 +263,7 @@ alter table public.organizations enable row level security;
 alter table public.users enable row level security;
 alter table public.tenders enable row level security;
 alter table public.tender_documents enable row level security;
+alter table public.tender_document_pages enable row level security;
 alter table public.requirements enable row level security;
 alter table public.evidence_vault enable row level security;
 alter table public.claims enable row level security;
@@ -282,6 +302,11 @@ create policy tenders_tenant_isolation on public.tenders
   with check (organization_id = public.current_user_organization_id());
 
 create policy tender_documents_tenant_isolation on public.tender_documents
+  for all to authenticated
+  using (organization_id = public.current_user_organization_id())
+  with check (organization_id = public.current_user_organization_id());
+
+create policy tender_document_pages_tenant_isolation on public.tender_document_pages
   for all to authenticated
   using (organization_id = public.current_user_organization_id())
   with check (organization_id = public.current_user_organization_id());
