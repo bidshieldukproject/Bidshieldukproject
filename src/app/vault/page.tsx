@@ -20,6 +20,14 @@ import { Sidebar } from "@/components/Sidebar";
 import { supabase } from "@/lib/supabase/client";
 
 const EVIDENCE_BUCKET = "evidence-vault";
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
+const categoryOptions = [
+  { value: "ACCREDITATIONS", label: "Accreditations" },
+  { value: "INSURANCES", label: "Insurances" },
+  { value: "FINANCIAL", label: "Financial records" },
+  { value: "POLICIES", label: "Policy documents" },
+  { value: "OTHER", label: "Other evidence" }
+] as const;
 
 const categories = [
   { label: "Accreditations", count: "18 documents", icon: FileCheck2, toneClass: "bg-emerald-400/10 text-emerald-300" },
@@ -54,6 +62,7 @@ export default function VaultPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [documents, setDocuments] = useState<EvidenceDocument[]>([]);
+  const [category, setCategory] = useState<(typeof categoryOptions)[number]["value"]>("OTHER");
 
   const loadDocuments = async () => {
     const { data, error } = await supabase.from("evidence_vault").select("id, document_name, document_type, category, expiry_date, status").order("created_at", { ascending: false }).limit(100);
@@ -68,6 +77,14 @@ export default function VaultPage() {
 
   const chooseFile = (file?: File) => {
     if (!file) return;
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      setUploadMessage("Evidence ingestion currently supports PDF files only.");
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      setUploadMessage("Evidence PDFs must be 25 MB or smaller.");
+      return;
+    }
     setSelectedFile(file);
     setUploadMessage(null);
   };
@@ -87,50 +104,25 @@ export default function VaultPage() {
 
     setIsUploading(true);
     setUploadMessage(null);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setIsUploading(false);
-      setUploadMessage("Please sign in before uploading evidence.");
-      return;
-    }
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("category", category);
+      const uploadResponse = await fetch("/api/evidence/upload", { method: "POST", body: formData });
+      const uploadPayload = (await uploadResponse.json()) as { evidenceId?: string; error?: string };
+      if (!uploadResponse.ok || !uploadPayload.evidenceId) throw new Error(uploadPayload.error ?? "Upload could not be completed.");
 
-    const { data: membership, error: membershipError } = await supabase.from("users").select("id, organization_id").eq("auth_user_id", user.id).maybeSingle();
-    if (membershipError || !membership) {
-      setIsUploading(false);
-      setUploadMessage("Organisation membership is required before uploading evidence.");
-      return;
-    }
+      const processResponse = await fetch(`/api/evidence/${uploadPayload.evidenceId}/process`, { method: "POST" });
+      const processPayload = (await processResponse.json()) as { pageCount?: number; status?: string; error?: string; detail?: string };
+      if (!processResponse.ok) throw new Error(processPayload.detail ?? processPayload.error ?? "Evidence processing could not be completed.");
 
-    const safeName = selectedFile.name.toLowerCase().replace(/[^a-z0-9.-]+/g, "-");
-    const storagePath = `${membership.organization_id}/pending-review/${crypto.randomUUID()}-${safeName}`;
-    const { error } = await supabase.storage.from(EVIDENCE_BUCKET).upload(storagePath, selectedFile, {
-      cacheControl: "3600",
-      contentType: selectedFile.type || "application/octet-stream",
-      upsert: false
-    });
-
-    if (error) {
-      setIsUploading(false);
-      setUploadMessage("Upload could not be completed. Please retry.");
-      return;
-    }
-
-    const { error: metadataError } = await supabase.from("evidence_vault").insert({
-      organization_id: membership.organization_id,
-      document_name: selectedFile.name,
-      document_type: selectedFile.type || "application/octet-stream",
-      category: "OTHER",
-      storage_path: storagePath,
-      status: "PENDING_REVIEW",
-      provenance_state: "SOURCE",
-      uploaded_by: membership.id
-    });
-
-    setIsUploading(false);
-    setUploadMessage(metadataError ? "File uploaded, but metadata persistence needs review." : "Uploaded for metadata review.");
-    if (!metadataError) {
       setSelectedFile(null);
+      setUploadMessage(processPayload.status === "READY" ? `Uploaded and read ${processPayload.pageCount ?? 0} pages. Ready for evidence review.` : "Uploaded, but no readable text was detected. OCR review is required.");
       await loadDocuments();
+    } catch (uploadError) {
+      setUploadMessage(uploadError instanceof Error ? uploadError.message : "Evidence upload could not be completed.");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -163,7 +155,7 @@ export default function VaultPage() {
               onDrop={handleDrop}
               className={`group flex min-h-[270px] cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed px-6 py-10 text-center transition-all ${isDragging ? "border-emerald-300 bg-emerald-400/10" : "border-white/20 bg-white/[0.035] hover:border-emerald-400/60 hover:bg-emerald-400/[0.04]"}`}
             >
-              <input ref={inputRef} type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={handleFileChange} />
+              <input ref={inputRef} type="file" className="hidden" accept="application/pdf,.pdf" onChange={handleFileChange} />
               <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-400/10 text-emerald-300 ring-1 ring-inset ring-emerald-400/20 transition group-hover:scale-105">
                 <CloudUpload aria-hidden="true" className="h-7 w-7" />
                 <Sparkles aria-hidden="true" className="absolute -right-2 -top-2 h-4 w-4 text-emerald-200" />
@@ -182,19 +174,20 @@ export default function VaultPage() {
                 {selectedFile ? (
                   <div className="flex items-start gap-3">
                     <FileText aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
-                    <div className="min-w-0 flex-1"><p className="truncate text-sm text-white">{selectedFile.name}</p><p className="mt-1 text-xs text-slate-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB · pending metadata</p></div>
+                    <div className="min-w-0 flex-1"><p className="truncate text-sm text-white">{selectedFile.name}</p><p className="mt-1 text-xs text-slate-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB · {categoryOptions.find((option) => option.value === category)?.label}</p></div>
                     <button aria-label="Remove selected file" onClick={() => setSelectedFile(null)} className="text-slate-500 hover:text-white"><X aria-hidden="true" className="h-4 w-4" /></button>
                   </div>
                 ) : (
                   <p className="text-sm leading-6 text-slate-400">Select a document to prepare its storage path, content type, and review status.</p>
                 )}
               </div>
+              <label className="mt-4 block text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Evidence category<select value={category} onChange={(event) => setCategory(event.target.value as typeof category)} className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-[#0B0F19] px-3 text-sm normal-case tracking-normal text-slate-200 outline-none focus:border-emerald-300/50"><option value="ACCREDITATIONS">Accreditations</option><option value="INSURANCES">Insurances</option><option value="FINANCIAL">Financial records</option><option value="POLICIES">Policy documents</option><option value="OTHER">Other evidence</option></select></label>
               <button disabled={!selectedFile || isUploading} onClick={handleUpload} className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 text-sm font-semibold text-[#07100d] transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40">
                 <UploadCloud aria-hidden="true" className="h-4 w-4" />
                 {isUploading ? "Uploading securely…" : "Upload for review"}
               </button>
               {uploadMessage && <p className="mt-3 text-center text-xs text-slate-400">{uploadMessage}</p>}
-              <p className="mt-4 text-[11px] leading-5 text-slate-600">Storage bucket: <span className="font-mono text-slate-500">{EVIDENCE_BUCKET}</span>. Signed viewing URLs will be generated only after verification.</p>
+              <p className="mt-4 text-[11px] leading-5 text-slate-600">Storage bucket: <span className="font-mono text-slate-500">{EVIDENCE_BUCKET}</span>. Files are processed page by page and remain organisation-isolated.</p>
             </div>
           </section>
 
