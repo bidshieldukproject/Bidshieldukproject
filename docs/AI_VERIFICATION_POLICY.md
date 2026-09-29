@@ -1,9 +1,9 @@
-# BidShield AI Verification Policy v1.0
+# BidShield AI Verification Policy v1.1
 
-**Document owner:** BidShield Product and Compliance Engineering  
-**Status:** Approved implementation baseline  
-**Effective date:** 29 September 2026  
-**Policy version:** `1.0`  
+**Document owner:** BidShield Product and Compliance Engineering
+**Status:** Research-updated implementation baseline
+**Effective date:** 29 September 2026
+**Policy version:** `1.1`
 **Applies to:** UK public-sector procurement evidence-assurance workflows
 
 > **They Write. BidShield Verifies.**
@@ -27,7 +27,34 @@ It applies to:
 - executive and final report generation; and
 - human review of ambiguous or consequential results.
 
-It does not authorise BidShield to provide legal advice, certify insurance, attest to financial standing, or submit a tender on behalf of a supplier.
+It does not authorise BidShield to provide legal advice, certify insurance, attest to financial standing, or submit a tender on behalf of a supplier. It does not transfer any statutory duty from a contracting authority, supplier, reviewer, or data controller to BidShield.
+
+## 1.1 Legal and policy classification
+
+Every policy finding and product result must identify its authority level:
+
+1. Binding UK law: the Procurement Act 2023, Procurement Regulations 2024, applicable transitional instruments, UK GDPR, and the Data Protection Act 2018.
+2. Statutory guidance or material carrying a statutory “have regard” duty, where applicable.
+3. Mandatory government policy for a stated scope, such as PPN 017 or ATRS requirements for covered bodies and tools.
+4. Official government, ICO, NCSC, or provider guidance.
+5. BidShield internal control.
+6. Unresolved legal or factual question requiring escalation.
+
+BidShield must never output a generic “UK compliant” label without recording the source title, exact provision or paragraph, URL, effective or revision date, scope, evidence observed, evidence missing, uncertainty, and reviewer decision.
+
+## 1.2 Procurement-regime gate
+
+Before applying a procurement conclusion, the system must record or escalate:
+
+- jurisdiction and devolved arrangement;
+- authority type and sector;
+- contract or procedure type, including light-touch, utility, defence/security, framework, DPS, or qualification system;
+- commencement trigger and date;
+- applicable new or legacy regime;
+- below-threshold or direct-award route; and
+- relevant amendments, clarifications, addenda, or saving provisions.
+
+The Procurement Act 2023 commenced for the new regime on 24 February 2025, but transitional rules preserve specified PCR, UCR, CCR, and DSPCR procedures and arrangements. BidShield must not default every post-commencement record to the new Act. Unknown regime fields block cross-regime conclusions and require human review.
 
 ## 2. Governing principles
 
@@ -63,6 +90,18 @@ When sources conflict, the system must preserve the conflict and apply the follo
 6. AI-derived interpretation or summary.
 
 A lower-ranked source must not silently override a higher-ranked source. Conflicts must produce `CONTRADICTED` or `NEEDS_REVIEW`, depending on whether the conflict is objectively provable.
+
+## 3.1 Procurement integrity controls
+
+For each requirement, condition, specification, award criterion, or assessment summary, BidShield should preserve the exact notice or associated-document passage, attachment, version/hash, page or paragraph, and supporting evidence. A model-generated summary is not a substitute for the tender notice and associated documents.
+
+Clarifications must be classified as either explanation-only or a possible modification of the procurement terms. A possible modification must preserve the question, answer, recipients, dates, before/after artefacts, affected suppliers, deadline assessment, republication or notification evidence, and human legal review. BidShield must flag missing equal-treatment or time-limit evidence rather than silently passing it.
+
+The implementation should support a notice calendar for the applicable regime, including tender, award, contract-details, termination, payment, performance, change, and other required notices. It must preserve central-platform submission acknowledgement or public-access evidence, notice identifiers, links, rendered content, and timestamps. Deadlines and exceptions are regime-specific and must not be inferred from a generic UK rule.
+
+Assessment summaries must be checked at criterion and sub-criterion level. Where the methodology uses scores or weightings, the system should verify scores, totals, and supplier-specific reasons tied to relevant tender information. Generic reasons or missing evidence references require review.
+
+Exclusion, debarment, subcontractor, and conflict-of-interest checks are separate high-impact workflows. BidShield may retrieve and compare evidence, but an authorised procurement decision-maker must review representations, self-cleaning evidence, proportionality, connected-person information, conflicts, and any proposed adverse action. The system must never autonomously exclude, debar, award, or redact.
 
 ## 4. Processing stages
 
@@ -209,21 +248,29 @@ Human review is mandatory for:
 
 A reviewer must record a decision, rationale, and user identity. Reviewer approval must not delete the original AI output or source citation.
 
-## 11. Privacy and provider controls
+No AI-only rejection, exclusion, debarment, award, fraud finding, redaction, or other legally or similarly significant outcome may be final. Meaningful human involvement must include inspection of source evidence, uncertainty, and contrary information, with authority to override. The affected supplier or person must have a documented route for representation, human intervention, explanation at an appropriate level, challenge, and escalation. The current UK automated-decision framework must be checked at implementation time because the Data (Use and Access) Act 2025 amended the former Article 22 structure.
 
-Only the minimum page text and evidence facts necessary for the current operation should be sent to Gemini. The application should prefer page excerpts and structured facts over unnecessary full-document transmission.
+## 11. Privacy, provider, and transfer controls
+
+Before production processing, BidShield must classify each file, field, prompt, output, cache, embedding, and log as personal, non-personal, special-category, criminal-offence, confidential-commercial, credential/security-sensitive, or unknown. Unknown or sensitive inputs default to quarantine and manual review.
+
+For every purpose, the responsible organisation must document the controller, processor or joint-controller role, lawful basis, necessity and minimisation, privacy information, retention, recipients, subprocessors, international-transfer route, and DPIA decision. Where personal data is involved, a DPIA or documented non-high-risk conclusion is required before production use and after material changes. Article 28 terms, security measures, rights assistance, deletion/return, audit information, and subprocessor controls must be contractually addressed where a provider is a processor.
 
 The implementation must:
 
-- keep `GEMINI_API_KEY` server-side;
-- never expose the key in browser JavaScript, logs, GitHub, or client responses;
+- keep `GEMINI_API_KEY` server-side in an approved secret store;
+- never expose the key in browser JavaScript, logs, GitHub, URLs, or client responses;
+- use only a verified paid Gemini API project or approved enterprise route for production tender data;
+- prohibit unpaid Gemini services, unqualified AI Studio usage, browser-side production calls, and developer/test keys for confidential or personal data;
 - preserve organisation isolation before constructing an AI request;
-- avoid sending unrelated tenant records;
-- record provider/model metadata without storing secrets;
-- respect the configured provider's data-processing and retention terms; and
-- provide a configurable path to redact personal data before AI processing.
+- send only the minimum page excerpts and structured evidence facts needed for the operation;
+- redact or block irrelevant personal, special-category, criminal-offence, credential, and confidential-commercial data unless an approved route exists;
+- record provider, model, account/project, endpoint, location, terms/DPA, retention, abuse-monitoring, logging, and feature configuration without storing secrets; and
+- support access, rectification, restriction, erasure, objection, and applicable portability across source files, extracted text, prompts, outputs, embeddings, caches, and logs.
 
-Before production use with real confidential tenders, the organisation must review its provider agreement, retention settings, UK GDPR role allocation, international transfer position, and any applicable data-processing agreement.
+Paid Gemini usage must not be described as zero retention, no human access, no cross-border processing, or UK residency. Provider documentation describes abuse monitoring and possible transient or cached processing outside the UK. BidShield must prohibit Google Search/Maps grounding, File API, stateful interactions, live resumption, explicit context caching, tuning, datasets, or request/response logging for tender text unless separately approved with retention, deletion, and transfer evidence. Where location matters, a supported regional enterprise endpoint is preferred, but the exact model and endpoint must be verified.
+
+If personal data is sent outside the UK, the controller or DPO must document whether the transfer is restricted and record adequacy, appropriate safeguards, supplementary measures, or a valid exception before release. A UK Supabase region or Google availability in the UK is not, by itself, evidence of UK-only processing.
 
 ## 12. Audit trail requirements
 
@@ -257,6 +304,16 @@ A processing run must fail closed when:
 - the result cannot be reconciled with deterministic checks.
 
 The result in a fail-closed case is `NEEDS_REVIEW` or `FAILED`, never `VERIFIED`.
+
+## 13.1 Secure AI architecture
+
+Production Gemini calls must run through a server-side BidShield backend or edge function. The client must never call Gemini directly. The service must use an SSRF-safe fetcher, allow only `http` and `https`, block private and link-local addresses, limit redirects, size, and time, validate content types, and apply rate limits, timeouts, idempotency, and a circuit breaker.
+
+Tender text and external pages are untrusted data. The implementation must delimit and label source text, prevent source instructions from overriding the system policy, disable browsing, tools, code execution, and external actions for verification calls, and never allow model output to choose URLs, SQL, tenant IDs, permissions, or executable code. Prompt-injection and exfiltration tests are required before each material model or prompt change.
+
+Supabase tenant isolation must remain explicit and testable. Every tenant-owned table must have a non-null organisation reference, RLS must be enabled on every exposed table, and select/insert/update/delete policies must bind rows to server-validated membership. `with check` rules must prevent tenant reassignment. Equivalent controls are required for storage objects, RPCs, views, realtime, exports, and background jobs. Service-role paths are server-only, narrowly scoped, explicitly tenant-filtered, and separately audited.
+
+The AI pipeline must have a security and continuity playbook covering key rotation, Gemini disablement, affected-tenant identification, incident escalation, log preservation, restoration, and tenant-isolation validation. Prompts, outputs, embeddings, logs, backups, and provider copies are sensitive assets with component-level retention and deletion controls.
 
 ## 14. Final report policy
 
@@ -306,6 +363,24 @@ The first implementation must pass at least these cases:
 9. Requirement not explicit in tender → not invented.
 10. Human approval recorded with reviewer and timestamp → eligible for `VERIFIED` if all other gates pass.
 
+## 17. Research references
+
+The following sources were reviewed for this policy update on 29 September 2026. They must be revalidated before material releases because legislation, guidance, provider terms, model locations, retention, and scope can change.
+
+- [Procurement Act 2023](https://www.legislation.gov.uk/ukpga/2023/54/contents) — binding primary legislation, including tender documents, modifications, assessment summaries, exclusions, conflicts, information, records, and oversight.
+- [Procurement Regulations 2024](https://www.legislation.gov.uk/uksi/2024/692/contents) — binding secondary legislation for notices, publication, tender information, and related requirements.
+- [Procurement Act 2023 Commencement and Transitional Regulations 2024](https://www.legislation.gov.uk/uksi/2024/716) — binding transitional and saving rules.
+- [Cabinet Office Procurement Act guidance collection](https://www.gov.uk/government/collections/procurement-act-2023-guidance-documents) — official technical guidance, including transition, publication, assessment summaries, exclusions, debarment, and modifications.
+- [UK GDPR and Data Protection Act 2018](https://www.legislation.gov.uk/eur/2016/679/contents) — binding data-protection law; see also the [Data Protection Act 2018](https://www.legislation.gov.uk/ukpga/2018/12/contents) and [Data (Use and Access) Act 2025](https://www.legislation.gov.uk/ukpga/2025/18).
+- [ICO guidance on AI and data protection](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/artificial-intelligence/guidance-on-ai-and-data-protection/) — regulatory guidance on lawfulness, transparency, accuracy, security, DPIAs, rights, and automated decisions.
+- [Artificial Intelligence Playbook for the UK Government](https://www.gov.uk/government/publications/ai-playbook-for-the-uk-government/artificial-intelligence-playbook-for-the-uk-government-html) — official government guidance on meaningful human control, assurance, monitoring, and accountability.
+- [Data and AI Ethics Framework](https://www.gov.uk/government/publications/data-ethics-framework/data-and-ai-ethics-framework) — official guidance on transparency, fairness, privacy, safety, and lifecycle governance.
+- [PPN 017: Improving transparency of AI use in procurement](https://www.gov.uk/government/publications/ppn-017-improving-transparency-of-ai-use-in-procurement/ppn-017-improving-transparency-of-ai-use-in-procurement-html) — government procurement policy for its stated in-scope bodies.
+- [Algorithmic Transparency Recording Standard guidance](https://www.gov.uk/government/publications/guidance-for-organisations-using-the-algorithmic-transparency-recording-standard/algorithmic-transparency-recording-standard-guidance-for-public-sector-bodies) — public-sector transparency guidance and scope.
+- [NCSC Cloud Security Principles](https://www.ncsc.gov.uk/collection/cloud/the-cloud-security-principles) and [supplier assurance questions](https://www.ncsc.gov.uk/guidance/supplier-assurance-questions) — official security guidance on separation, locations, access, supply chain, logging, and resilience.
+- [Gemini API Additional Terms](https://ai.google.dev/gemini-api/terms), [abuse monitoring](https://ai.google.dev/gemini-api/docs/usage-policies), [logs and sharing](https://ai.google.dev/gemini-api/docs/logs-policy), [zero data retention](https://ai.google.dev/gemini-api/docs/zdr), [locations](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/locations), and [Cloud DPA](https://cloud.google.com/terms/data-processing-addendum) — provider terms and operational documentation; applicability depends on the exact Google account, project, model, endpoint, and contract.
+- [Supabase Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security) and [API keys](https://supabase.com/docs/guides/api/api-keys) — provider security documentation for tenant isolation and secret handling.
+
 ---
 
-**Policy conclusion:** BidShield may use Gemini Flash to accelerate reading and matching, but the product's trust boundary remains the source citation, deterministic validation, tenant isolation, audit trail, and human review.
+**Policy conclusion:** BidShield may use an approved paid Gemini route to accelerate reading and matching, but the product's trust boundary remains the applicable procurement regime, source citation, deterministic validation, tenant isolation, privacy and transfer assessment, audit trail, and meaningful human review.
