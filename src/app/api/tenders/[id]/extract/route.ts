@@ -108,7 +108,9 @@ export async function POST(_request: Request, context: RouteContext) {
         deterministic_issues: issues,
         source_document_id: document.id,
         source_page: normalized.sourcePage,
-        source_excerpt: normalized.sourceExcerpt
+        source_excerpt: normalized.sourceExcerpt,
+        extracted_amount: normalized.amount,
+        extracted_currency: normalized.currency
       }
     }));
 
