@@ -17,7 +17,8 @@ async function sha256(value: string) {
 }
 
 export async function extractTenderPdfPages(file: File): Promise<TenderExtractionResult> {
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const { GlobalWorkerOptions, getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/legacy/build/pdf.worker.min.mjs", import.meta.url).toString();
   const buffer = await file.arrayBuffer();
   const pdf = await getDocument({
     data: new Uint8Array(buffer)
