@@ -1,5 +1,3 @@
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
-
 export type TenderPageExtraction = {
   pageNumber: number;
   textContent: string;
@@ -19,6 +17,7 @@ async function sha256(value: string) {
 }
 
 export async function extractTenderPdfPages(file: File): Promise<TenderExtractionResult> {
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const buffer = await file.arrayBuffer();
   const pdf = await getDocument({
     data: new Uint8Array(buffer)
