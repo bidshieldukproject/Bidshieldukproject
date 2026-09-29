@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, Fragment, useEffect, useRef, useState } from "react";
 import {
   Archive,
   ArrowUpRight,
@@ -17,6 +17,7 @@ import {
   X
 } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
+import { EvidenceFactPanel } from "@/components/EvidenceFactPanel";
 import { supabase } from "@/lib/supabase/client";
 
 const EVIDENCE_BUCKET = "evidence-vault";
@@ -206,7 +207,7 @@ export default function VaultPage() {
 
           <section className="mt-8 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/10 backdrop-blur-xl">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-5"><div><h2 className="text-base font-semibold text-white">Document register</h2><p className="mt-1 text-xs text-slate-500">Current verification and expiry status</p></div><Archive aria-hidden="true" className="h-5 w-5 text-slate-500" /></div>
-            <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="border-b border-white/10 text-[10px] uppercase tracking-[0.16em] text-slate-500"><tr><th className="px-5 py-4 font-medium">Document name</th><th className="px-4 py-4 font-medium">Type</th><th className="px-4 py-4 font-medium">Expiry date</th><th className="px-4 py-4 font-medium">Status</th></tr></thead><tbody className="divide-y divide-white/[0.07]">{documents.map((document) => <tr key={document.name} className="transition hover:bg-white/[0.025]"><td className="px-5 py-5"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.05] text-slate-400"><FileText aria-hidden="true" className="h-4 w-4" /></div><span className="font-medium text-white">{document.name}</span></div></td><td className="px-4 py-5 text-xs text-slate-400">{document.type}</td><td className="px-4 py-5 text-xs text-slate-400">{document.expiry}</td><td className="px-4 py-5"><span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset ${statusStyles[document.status]}`}>{document.status}</span></td></tr>)}</tbody></table></div>
+            <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="border-b border-white/10 text-[10px] uppercase tracking-[0.16em] text-slate-500"><tr><th className="px-5 py-4 font-medium">Document name</th><th className="px-4 py-4 font-medium">Type</th><th className="px-4 py-4 font-medium">Expiry date</th><th className="px-4 py-4 font-medium">Status</th></tr></thead><tbody className="divide-y divide-white/[0.07]">{documents.map((document) => <Fragment key={document.id}><tr className="transition hover:bg-white/[0.025]"><td className="px-5 py-5"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.05] text-slate-400"><FileText aria-hidden="true" className="h-4 w-4" /></div><span className="font-medium text-white">{document.name}</span></div></td><td className="px-4 py-5 text-xs text-slate-400">{document.type}</td><td className="px-4 py-5 text-xs text-slate-400">{document.expiry}</td><td className="px-4 py-5"><span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset ${statusStyles[document.status]}`}>{document.status}</span></td></tr><tr><td colSpan={4} className="p-0"><EvidenceFactPanel evidenceId={document.id} documentName={document.name} /></td></tr></Fragment>)}</tbody></table></div>
           </section>
         </div>
       </main>
