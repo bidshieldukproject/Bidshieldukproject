@@ -63,6 +63,7 @@ export type EvidenceCandidate = {
 
 export type MatchResult = {
   requirementId: string;
+  requirementTitle: string;
   evidenceId: string | null;
   status: MatchingStatus;
   matchType: string;

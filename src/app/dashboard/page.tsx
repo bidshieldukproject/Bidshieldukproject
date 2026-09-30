@@ -2,6 +2,7 @@ import { AlertTriangle, ArrowUpRight, CalendarDays, CheckCircle2, Clock3, FileWa
 import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { TenderExtractionPanel } from "@/components/TenderExtractionPanel";
+import { RequirementEvidencePanel } from "@/components/RequirementEvidencePanel";
 import { getDashboardData } from "@/lib/data/dashboard";
 
 const metricConfig = [
@@ -49,7 +50,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
             <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-5 shadow-2xl shadow-black/10 backdrop-blur-xl"><div className="flex items-center justify-between"><div><h2 className="text-base font-semibold text-white">Attention needed</h2><p className="mt-1 text-xs text-slate-500">Derived from live records</p></div><AlertTriangle aria-hidden="true" className="h-5 w-5 text-amber-300" /></div>{dashboard.alerts.length ? <div className="mt-6 space-y-5">{dashboard.alerts.map((alert) => <div key={alert.title} className="flex gap-3"><div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${alert.tone === "critical" ? "bg-red-400/10 text-red-300" : alert.tone === "warning" ? "bg-amber-400/10 text-amber-300" : "bg-sky-400/10 text-sky-300"}`}><AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" /></div><div><p className="text-sm font-medium text-slate-200">{alert.title}</p><p className="mt-1 text-xs leading-5 text-slate-500">{alert.detail}</p></div></div>)}</div> : <div className="py-10 text-center"><CheckCircle2 aria-hidden="true" className="mx-auto h-8 w-8 text-emerald-400" /><p className="mt-3 text-sm font-medium text-white">No actions required</p><p className="mt-1 text-xs leading-5 text-slate-500">Live records currently show no unresolved alerts.</p></div>}<div className="mt-7 flex items-center gap-2 border-t border-white/10 pt-5 text-xs text-slate-400"><CheckCircle2 aria-hidden="true" className="h-4 w-4 text-emerald-400" /> RLS-scoped workspace data</div></section>
           </div>
 
-          <div className="mt-6"><TenderExtractionPanel tenderId={selectedTenderId} tenderName={selectedTender?.name} /></div>
+          <div className="mt-6 space-y-6"><TenderExtractionPanel tenderId={selectedTenderId} tenderName={selectedTender?.name} /><RequirementEvidencePanel tenderId={selectedTenderId} tenderName={selectedTender?.name} /></div>
         </div>
       </main>
     </div>

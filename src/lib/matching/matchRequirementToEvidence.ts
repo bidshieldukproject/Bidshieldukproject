@@ -28,7 +28,7 @@ export function matchRequirementToEvidence(requirementInput: RequirementInput, e
   const candidate = candidates[0];
 
   if (!candidate) {
-    return { requirementId: requirement.id, evidenceId: null, status: "UNVERIFIED", matchType: "NO_CANDIDATE", reasoning: "No organisation-scoped evidence document matched the requirement type or explicit evidence terms.", matchedFacts: [], evidencePage: null, evidenceExcerpt: null, deterministicChecks: [], candidateScore: 0 };
+    return { requirementId: requirement.id, requirementTitle: requirement.title, evidenceId: null, status: "UNVERIFIED", matchType: "NO_CANDIDATE", reasoning: "No organisation-scoped evidence document matched the requirement type or explicit evidence terms.", matchedFacts: [], evidencePage: null, evidenceExcerpt: null, deterministicChecks: [], candidateScore: 0 };
   }
 
   const selected = candidate.evidence;
@@ -48,6 +48,7 @@ export function matchRequirementToEvidence(requirementInput: RequirementInput, e
 
   return {
     requirementId: requirement.id,
+    requirementTitle: requirement.title,
     evidenceId: selected.id,
     status,
     matchType: candidate.reasons[0] ?? "CANDIDATE_MATCH",
