@@ -1,5 +1,7 @@
 const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+const RETRY_DELAYS_MS = [2000, 5000, 15000];
 
 export const GEMINI_POLICY_VERSION = "1.1";
 export const GEMINI_PROMPT_VERSION = "requirements-v1";
@@ -130,6 +132,10 @@ Rules:
 ${pageText}`;
 }
 
+function retryableError(status: number, attempts: number) {
+  return `[RETRYABLE_PROVIDER_ERROR] Gemini extraction failed with status ${status} after ${attempts} attempts. Please retry later.`;
+}
+
 export async function extractRequirementsWithGemini(pages: GeminiPage[]): Promise<GeminiExtractionResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -139,25 +145,37 @@ export async function extractRequirementsWithGemini(pages: GeminiPage[]): Promis
     throw new Error("No readable tender pages are available for requirement extraction.");
   }
 
-  const response = await fetch(`${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: {
-        parts: [{ text: "You are BidShield's evidence-grounded procurement extraction engine. Follow policy version 1.1. Never invent facts." }]
-      },
-      contents: [{ role: "user", parts: [{ text: buildPrompt(pages) }] }],
-      generationConfig: {
-        temperature: 0.1,
-        responseMimeType: "application/json",
-        responseSchema
-      }
-    }),
-    cache: "no-store"
+  const requestBody = JSON.stringify({
+    systemInstruction: {
+      parts: [{ text: "You are BidShield's evidence-grounded procurement extraction engine. Follow policy version 1.1. Never invent facts." }]
+    },
+    contents: [{ role: "user", parts: [{ text: buildPrompt(pages) }] }],
+    generationConfig: {
+      temperature: 0.1,
+      responseMimeType: "application/json",
+      responseSchema
+    }
   });
 
-  if (!response.ok) {
-    throw new Error(`Gemini extraction failed with status ${response.status}.`);
+  let response: Response | null = null;
+  for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt += 1) {
+    response = await fetch(`${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: requestBody,
+      cache: "no-store"
+    });
+    if (response.ok) break;
+    if (!RETRYABLE_STATUS_CODES.has(response.status)) {
+      throw new Error(`Gemini extraction failed with status ${response.status}. This provider or model configuration requires attention.`);
+    }
+    if (attempt < RETRY_DELAYS_MS.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+    }
+  }
+
+  if (!response?.ok) {
+    throw new Error(retryableError(response?.status ?? 503, RETRY_DELAYS_MS.length));
   }
 
   const payload = (await response.json()) as {

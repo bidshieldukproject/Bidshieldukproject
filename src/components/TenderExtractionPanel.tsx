@@ -30,6 +30,9 @@ export function TenderExtractionPanel({ tenderId, tenderName }: { tenderId: stri
   const [error, setError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
 
+  const retryableError = Boolean(error?.includes("[RETRYABLE_PROVIDER_ERROR]"));
+  const displayError = error?.replace("[RETRYABLE_PROVIDER_ERROR] ", "") ?? null;
+
   async function runExtraction() {
     if (!tenderId) return;
     setError(null);
@@ -64,7 +67,7 @@ export function TenderExtractionPanel({ tenderId, tenderName }: { tenderId: stri
         <button type="button" onClick={runExtraction} disabled={isRunning} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-[#07100d] shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-200 disabled:cursor-wait disabled:opacity-60">{isRunning ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <FileSearch aria-hidden="true" className="h-4 w-4" />}{isRunning ? "Reading source…" : "Run verification"}</button>
       </div>
 
-      {error && <div role="alert" className="mt-5 flex gap-3 rounded-xl border border-red-300/20 bg-red-300/[0.06] p-4 text-sm leading-6 text-red-100"><AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-red-300" /><div><p className="font-medium">Verification could not run</p><p className="mt-1 text-red-100/70">{error}</p></div></div>}
+      {error && <div role="alert" className={`mt-5 flex gap-3 rounded-xl border p-4 text-sm leading-6 ${retryableError ? "border-amber-300/20 bg-amber-300/[0.06] text-amber-100" : "border-red-300/20 bg-red-300/[0.06] text-red-100"}`}><AlertCircle aria-hidden="true" className={`mt-0.5 h-4 w-4 shrink-0 ${retryableError ? "text-amber-300" : "text-red-300"}`} /><div className="min-w-0"><p className="font-medium">{retryableError ? "AI provider temporarily unavailable" : "Verification could not run"}</p><p className={`mt-1 ${retryableError ? "text-amber-100/75" : "text-red-100/70"}`}>{displayError}</p>{retryableError && <button type="button" onClick={runExtraction} disabled={isRunning} className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-lg border border-amber-200/20 bg-amber-200/10 px-3 text-xs font-semibold text-amber-100 transition hover:bg-amber-200/15 disabled:opacity-60"><FileSearch aria-hidden="true" className="h-3.5 w-3.5" />Retry saved tender</button>}</div></div>}
 
       {result && <div className="mt-6 space-y-5">
         <div className="grid gap-3 sm:grid-cols-3">
