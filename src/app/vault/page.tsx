@@ -38,6 +38,7 @@ const categories = [
 ] as const;
 
 type EvidenceDocument = { id: string; name: string; type: string; category: string; expiry: string; status: "Valid" | "Expiring" | "Expired" };
+type AutomaticMatchingSummary = { matchedTenders: number; skippedTenders: number; failedTenders: number; facts: number; pages: number };
 
 function formatExpiry(expiryDate: string | null) {
   if (!expiryDate) return "No expiry";
@@ -117,8 +118,27 @@ export default function VaultPage() {
       const processPayload = (await processResponse.json()) as { pageCount?: number; status?: string; error?: string; detail?: string };
       if (!processResponse.ok) throw new Error(processPayload.detail ?? processPayload.error ?? "Evidence processing could not be completed.");
 
+      if (processPayload.status !== "READY") {
+        throw new Error("Uploaded, but no readable text was detected. OCR review is required before automatic matching.");
+      }
+
+      const factsResponse = await fetch(`/api/evidence/${uploadPayload.evidenceId}/extract-facts`, { method: "POST" });
+      const factsPayload = (await factsResponse.json()) as { counts?: { extracted: number; needsReview: number }; error?: string; detail?: string };
+      if (!factsResponse.ok || !factsPayload.counts) throw new Error(factsPayload.detail ?? factsPayload.error ?? "Evidence facts could not be extracted.");
+
+      const { data: tenders, error: tendersError } = await supabase.from("tenders").select("id").order("created_at", { ascending: false }).limit(100);
+      if (tendersError) throw new Error(`Evidence facts saved, but tender matching could not start: ${tendersError.message}`);
+
+      const summary: AutomaticMatchingSummary = { matchedTenders: 0, skippedTenders: 0, failedTenders: 0, facts: factsPayload.counts.extracted, pages: processPayload.pageCount ?? 0 };
+      for (const tender of tenders ?? []) {
+        const matchingResponse = await fetch(`/api/tenders/${tender.id}/match-evidence`, { method: "POST" });
+        if (matchingResponse.ok) summary.matchedTenders += 1;
+        else if (matchingResponse.status === 422) summary.skippedTenders += 1;
+        else summary.failedTenders += 1;
+      }
+
       setSelectedFile(null);
-      setUploadMessage(processPayload.status === "READY" ? `Uploaded and read ${processPayload.pageCount ?? 0} pages. Ready for evidence review.` : "Uploaded, but no readable text was detected. OCR review is required.");
+      setUploadMessage(`Uploaded, read ${summary.pages} pages, extracted ${summary.facts} cited facts, and matched against ${summary.matchedTenders} tender${summary.matchedTenders === 1 ? "" : "s"}.${summary.skippedTenders > 0 ? ` ${summary.skippedTenders} tender${summary.skippedTenders === 1 ? "" : "s"} skipped because requirements are not ready.` : ""}${summary.failedTenders > 0 ? ` ${summary.failedTenders} matching run${summary.failedTenders === 1 ? "" : "s"} need retry.` : ""}`);
       await loadDocuments();
     } catch (uploadError) {
       setUploadMessage(uploadError instanceof Error ? uploadError.message : "Evidence upload could not be completed.");
