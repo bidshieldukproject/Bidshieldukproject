@@ -17,8 +17,9 @@ async function sha256(value: string) {
 }
 
 export async function extractEvidencePdf(buffer: ArrayBuffer): Promise<EvidenceExtractionResult> {
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const pdf = await getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false }).promise;
+  const { GlobalWorkerOptions, getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/legacy/build/pdf.worker.min.mjs", import.meta.url).toString();
+  const pdf = await getDocument({ data: new Uint8Array(buffer) }).promise;
   const pages: EvidencePageExtraction[] = [];
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
