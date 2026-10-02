@@ -39,6 +39,7 @@ const categories = [
 
 type EvidenceDocument = { id: string; name: string; type: string; category: string; expiry: string; status: "Valid" | "Expiring" | "Expired" };
 type AutomaticMatchingSummary = { matchedTenders: number; skippedTenders: number; failedTenders: number; facts: number; pages: number };
+type BatchFileState = { file: File; status: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED"; message?: string };
 
 function formatExpiry(expiryDate: string | null) {
   if (!expiryDate) return "No expiry";
@@ -59,7 +60,7 @@ const statusStyles: Record<string, string> = {
 
 export default function VaultPage() {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<BatchFileState[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
@@ -77,38 +78,51 @@ export default function VaultPage() {
 
   useEffect(() => { void loadDocuments(); }, []);
 
-  const chooseFile = (file?: File) => {
-    if (!file) return;
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      setUploadMessage("Evidence ingestion currently supports PDF files only.");
+  const chooseFiles = (files?: File[]) => {
+    if (!files || files.length === 0) return;
+    if (files.length > 10) {
+      setUploadMessage("Select up to 10 evidence PDFs per batch.");
       return;
     }
-    if (file.size > MAX_FILE_SIZE) {
-      setUploadMessage("Evidence PDFs must be 25 MB or smaller.");
+    const invalid = files.find((file) => file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf"));
+    if (invalid) {
+      setUploadMessage(`${invalid.name} is not a PDF. Remove it and try again.`);
       return;
     }
-    setSelectedFile(file);
+    const oversized = files.find((file) => file.size > MAX_FILE_SIZE);
+    if (oversized) {
+      setUploadMessage(`${oversized.name} is larger than 25 MB.`);
+      return;
+    }
+    setSelectedFiles(files.map((file) => ({ file, status: "QUEUED" })));
     setUploadMessage(null);
   };
 
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setIsDragging(false);
-    chooseFile(event.dataTransfer.files?.[0]);
+    chooseFiles(Array.from(event.dataTransfer.files ?? []));
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    chooseFile(event.target.files?.[0]);
+    chooseFiles(Array.from(event.target.files ?? []));
   };
 
   const handleUpload = async () => {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
 
     setIsUploading(true);
     setUploadMessage(null);
-    try {
+    const summary = { uploaded: 0, failed: 0, matchedTenders: 0, skippedTenders: 0, failedTenders: 0, facts: 0, pages: 0 };
+    const updateFileStatus = (index: number, status: BatchFileState["status"], message?: string) => {
+      setSelectedFiles((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, status, message } : item));
+    };
+
+    for (const [index, item] of selectedFiles.entries()) {
+      updateFileStatus(index, "PROCESSING");
+      try {
       const formData = new FormData();
-      formData.append("file", selectedFile);
+      formData.append("file", item.file);
       formData.append("category", category);
       const uploadResponse = await fetch("/api/evidence/upload", { method: "POST", body: formData });
       const uploadPayload = (await uploadResponse.json()) as { evidenceId?: string; error?: string };
@@ -129,22 +143,24 @@ export default function VaultPage() {
       const { data: tenders, error: tendersError } = await supabase.from("tenders").select("id").order("created_at", { ascending: false }).limit(100);
       if (tendersError) throw new Error(`Evidence facts saved, but tender matching could not start: ${tendersError.message}`);
 
-      const summary: AutomaticMatchingSummary = { matchedTenders: 0, skippedTenders: 0, failedTenders: 0, facts: factsPayload.counts.extracted, pages: processPayload.pageCount ?? 0 };
+      summary.facts += factsPayload.counts.extracted;
+      summary.pages += processPayload.pageCount ?? 0;
       for (const tender of tenders ?? []) {
         const matchingResponse = await fetch(`/api/tenders/${tender.id}/match-evidence`, { method: "POST" });
         if (matchingResponse.ok) summary.matchedTenders += 1;
         else if (matchingResponse.status === 422) summary.skippedTenders += 1;
         else summary.failedTenders += 1;
       }
-
-      setSelectedFile(null);
-      setUploadMessage(`Uploaded, read ${summary.pages} pages, extracted ${summary.facts} cited facts, and matched against ${summary.matchedTenders} tender${summary.matchedTenders === 1 ? "" : "s"}.${summary.skippedTenders > 0 ? ` ${summary.skippedTenders} tender${summary.skippedTenders === 1 ? "" : "s"} skipped because requirements are not ready.` : ""}${summary.failedTenders > 0 ? ` ${summary.failedTenders} matching run${summary.failedTenders === 1 ? "" : "s"} need retry.` : ""}`);
-      await loadDocuments();
-    } catch (uploadError) {
-      setUploadMessage(uploadError instanceof Error ? uploadError.message : "Evidence upload could not be completed.");
-    } finally {
-      setIsUploading(false);
+      summary.uploaded += 1;
+      updateFileStatus(index, "COMPLETED", `${processPayload.pageCount ?? 0} pages · ${factsPayload.counts.extracted} facts`);
+      } catch (uploadError) {
+        summary.failed += 1;
+        updateFileStatus(index, "FAILED", uploadError instanceof Error ? uploadError.message : "Evidence processing failed.");
+      }
     }
+    setUploadMessage(`${summary.uploaded} of ${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"} completed. Read ${summary.pages} pages, extracted ${summary.facts} cited facts, and matched against ${summary.matchedTenders} tender run${summary.matchedTenders === 1 ? "" : "s"}.${summary.skippedTenders > 0 ? ` ${summary.skippedTenders} tender run${summary.skippedTenders === 1 ? "" : "s"} skipped because requirements are not ready.` : ""}${summary.failedTenders > 0 ? ` ${summary.failedTenders} matching run${summary.failedTenders === 1 ? "" : "s"} need retry.` : ""}${summary.failed > 0 ? ` ${summary.failed} file${summary.failed === 1 ? "" : "s"} failed and remain available for retry.` : ""}`);
+    await loadDocuments();
+    setIsUploading(false);
   };
 
   return (
@@ -176,7 +192,7 @@ export default function VaultPage() {
               onDrop={handleDrop}
               className={`group flex min-h-[270px] cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed px-6 py-10 text-center transition-all ${isDragging ? "border-emerald-300 bg-emerald-400/10" : "border-white/20 bg-white/[0.035] hover:border-emerald-400/60 hover:bg-emerald-400/[0.04]"}`}
             >
-              <input ref={inputRef} type="file" className="hidden" accept="application/pdf,.pdf" onChange={handleFileChange} />
+              <input ref={inputRef} type="file" multiple className="hidden" accept="application/pdf,.pdf" onChange={handleFileChange} />
               <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-400/10 text-emerald-300 ring-1 ring-inset ring-emerald-400/20 transition group-hover:scale-105">
                 <CloudUpload aria-hidden="true" className="h-7 w-7" />
                 <Sparkles aria-hidden="true" className="absolute -right-2 -top-2 h-4 w-4 text-emerald-200" />
@@ -192,18 +208,18 @@ export default function VaultPage() {
                 <div><h2 className="text-sm font-semibold text-white">Metadata intake</h2><p className="mt-1 text-xs text-slate-500">Secure storage pre-wired</p></div>
               </div>
               <div className="mt-6 rounded-2xl border border-white/10 bg-black/10 p-4">
-                {selectedFile ? (
-                  <div className="flex items-start gap-3">
-                    <FileText aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
-                    <div className="min-w-0 flex-1"><p className="truncate text-sm text-white">{selectedFile.name}</p><p className="mt-1 text-xs text-slate-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB · {categoryOptions.find((option) => option.value === category)?.label}</p></div>
-                    <button aria-label="Remove selected file" onClick={() => setSelectedFile(null)} className="text-slate-500 hover:text-white"><X aria-hidden="true" className="h-4 w-4" /></button>
+                {selectedFiles.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between"><p className="text-sm font-medium text-white">{selectedFiles.length} file{selectedFiles.length === 1 ? "" : "s"} selected</p><button aria-label="Remove selected files" onClick={() => setSelectedFiles([])} className="text-slate-500 hover:text-white"><X aria-hidden="true" className="h-4 w-4" /></button></div>
+                    <div className="max-h-40 space-y-2 overflow-y-auto">{selectedFiles.map((item) => <div key={`${item.file.name}-${item.file.lastModified}`} className="flex items-center gap-2 rounded-lg bg-white/[0.04] px-2.5 py-2"><FileText aria-hidden="true" className="h-4 w-4 shrink-0 text-emerald-300" /><div className="min-w-0 flex-1"><p className="truncate text-xs text-white">{item.file.name}</p><p className="text-[10px] text-slate-500">{(item.file.size / 1024 / 1024).toFixed(2)} MB · {item.status === "QUEUED" ? "Queued" : item.status === "PROCESSING" ? "Processing…" : item.status === "COMPLETED" ? item.message : `Failed: ${item.message}`}</p></div></div>)}</div>
+                    <p className="text-[11px] text-slate-500">Category: {categoryOptions.find((option) => option.value === category)?.label}</p>
                   </div>
                 ) : (
                   <p className="text-sm leading-6 text-slate-400">Select a document to prepare its storage path, content type, and review status.</p>
                 )}
               </div>
               <label className="mt-4 block text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Evidence category<select value={category} onChange={(event) => setCategory(event.target.value as typeof category)} className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-[#0B0F19] px-3 text-sm normal-case tracking-normal text-slate-200 outline-none focus:border-emerald-300/50"><option value="ACCREDITATIONS">Accreditations</option><option value="INSURANCES">Insurances</option><option value="FINANCIAL">Financial records</option><option value="POLICIES">Policy documents</option><option value="OTHER">Other evidence</option></select></label>
-              <button disabled={!selectedFile || isUploading} onClick={handleUpload} className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 text-sm font-semibold text-[#07100d] transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40">
+              <button disabled={selectedFiles.length === 0 || isUploading} onClick={handleUpload} className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 text-sm font-semibold text-[#07100d] transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40">
                 <UploadCloud aria-hidden="true" className="h-4 w-4" />
                 {isUploading ? "Uploading securely…" : "Upload for review"}
               </button>
