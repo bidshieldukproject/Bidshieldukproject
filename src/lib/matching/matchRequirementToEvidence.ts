@@ -10,10 +10,11 @@ import { EvidenceCandidate, EvidenceInput, MatchResult, MatchingStatus, Requirem
 
 function statusForChecks(checks: MatchResult["deterministicChecks"], candidate: EvidenceCandidate): MatchingStatus {
   if (checks.some((check) => check.passed === false && ["AMOUNT", "DATE", "CURRENCY", "DOCUMENT_TYPE", "CERTIFICATE"].includes(check.checkType))) return "CONTRADICTED";
-  if (checks.some((check) => check.passed === null)) return "NEEDS_REVIEW";
-  const passed = checks.filter((check) => check.passed === true).length;
-  if (passed === 0) return "UNVERIFIED";
-  if (passed === checks.length && candidate.score >= 0.65) return "VERIFIED";
+  if (checks.some((check) => check.passed === null && !check.reason.toLowerCase().includes("not applicable"))) return "NEEDS_REVIEW";
+  const applicableChecks = checks.filter((check) => check.passed !== null);
+  const passed = applicableChecks.filter((check) => check.passed === true).length;
+  if (passed === 0 || applicableChecks.length === 0) return "UNVERIFIED";
+  if (passed === applicableChecks.length && candidate.score >= 0.65) return "VERIFIED";
   return "SUPPORTED";
 }
 
@@ -40,7 +41,7 @@ export function matchRequirementToEvidence(requirementInput: RequirementInput, e
     currencyCheck(requirement, facts),
     dateCheck(requirement, selected),
     certificateCheck(requirement, facts)
-  ].filter((check) => check.passed !== null || ["AMOUNT", "CURRENCY", "DATE", "CERTIFICATE"].includes(check.checkType));
+  ];
   const status = statusForChecks(checks, candidate);
   const citation = facts[0] ?? null;
   const checkSummary = checks.map((check) => `${check.checkType}: ${check.reason}`).join(" ");

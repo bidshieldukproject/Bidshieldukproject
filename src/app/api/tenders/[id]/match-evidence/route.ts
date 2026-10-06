@@ -84,6 +84,7 @@ export async function POST(_request: Request, context: RouteContext) {
         : await supabase.from("claims").insert(claimPayload).select("id").maybeSingle();
       if (claimQuery.error || !claimQuery.data) throw claimQuery.error ?? new Error("Requirement coverage claim could not be saved.");
 
+      let claimEvidenceId: string | null = null;
       if (result.evidenceId) {
         const evidencePayload = {
           organization_id: membership.organization_id,
@@ -99,10 +100,44 @@ export async function POST(_request: Request, context: RouteContext) {
         const { data: existingLink, error: linkLookupError } = await supabase.from("claim_evidence").select("id").eq("organization_id", membership.organization_id).eq("claim_id", claimQuery.data.id).eq("evidence_id", result.evidenceId).maybeSingle();
         if (linkLookupError) throw linkLookupError;
         const linkQuery = existingLink
-          ? await supabase.from("claim_evidence").update(evidencePayload).eq("id", existingLink.id).eq("organization_id", membership.organization_id)
-          : await supabase.from("claim_evidence").insert(evidencePayload);
-        if (linkQuery.error) throw linkQuery.error;
+          ? await supabase.from("claim_evidence").update(evidencePayload).eq("id", existingLink.id).eq("organization_id", membership.organization_id).select("id").maybeSingle()
+          : await supabase.from("claim_evidence").insert(evidencePayload).select("id").maybeSingle();
+        if (linkQuery.error || !linkQuery.data) throw linkQuery.error ?? new Error("Claim evidence link could not be saved.");
+        claimEvidenceId = linkQuery.data.id;
       }
+
+      const { error: verificationError } = await supabase.from("verification_results").insert({
+        organization_id: membership.organization_id,
+        tender_id: tenderId,
+        requirement_id: requirement.id,
+        claim_id: claimQuery.data.id,
+        claim_evidence_id: claimEvidenceId,
+        system_status: result.status,
+        system_reasoning: result.reasoning,
+        deterministic_checks: result.deterministicChecks,
+        matched_facts: result.matchedFacts,
+        engine_version: "matching-v1",
+        matching_run_id: matchingRunId,
+        provenance_state: "CALCULATED",
+        provenance_metadata: { matching_run_id: matchingRunId, requirement_id: requirement.id, evidence_id: result.evidenceId, candidate_score: result.candidateScore }
+      });
+      if (verificationError) throw verificationError;
+
+      const { error: submissionCheckError } = await supabase.from("submission_checks").insert({
+        organization_id: membership.organization_id,
+        tender_id: tenderId,
+        check_type: "REQUIREMENT_COVERAGE",
+        status: result.status,
+        title: `Requirement coverage: ${requirement.title}`,
+        detail: result.reasoning,
+        entity_type: "requirement",
+        entity_id: requirement.id,
+        source_page: result.evidencePage ?? requirement.sourcePage,
+        source_excerpt: result.evidenceExcerpt ?? requirement.sourceExcerpt,
+        provenance_state: "CALCULATED",
+        provenance_metadata: { matching_run_id: matchingRunId, engine_version: "matching-v1", mandatory: requirement.mandatory, evidence_id: result.evidenceId }
+      });
+      if (submissionCheckError) throw submissionCheckError;
     }
 
     const counts = matches.reduce<Record<string, number>>((summary, match) => { summary[match.status] = (summary[match.status] ?? 0) + 1; return summary; }, {});
