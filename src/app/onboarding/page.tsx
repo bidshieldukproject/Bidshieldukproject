@@ -42,28 +42,14 @@ export default function OnboardingPage() {
       return;
     }
 
-    const { data: organisation, error: organisationError } = await supabase
-      .from("organizations")
-      .insert({ name: organisationName.trim(), created_by: user.id })
-      .select("id")
-      .single();
-
-    if (organisationError || !organisation) {
-      setIsSubmitting(false);
-      setError(organisationError?.message ?? "Organisation could not be created.");
-      return;
-    }
-
-    const { error: membershipError } = await supabase.from("users").insert({
-      auth_user_id: user.id,
-      organization_id: organisation.id,
-      role: "owner",
-      display_name: user.email ?? "Workspace owner"
+    const { error: onboardingError } = await supabase.rpc("create_organization_with_owner", {
+      p_organization_name: organisationName.trim(),
+      p_display_name: user.email ?? "Workspace owner"
     });
 
-    if (membershipError) {
+    if (onboardingError) {
       setIsSubmitting(false);
-      setError(membershipError.message);
+      setError(onboardingError.message);
       return;
     }
 
