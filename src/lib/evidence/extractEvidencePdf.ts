@@ -11,6 +11,10 @@ export type EvidenceExtractionResult = {
   status: "READY" | "OCR_REQUIRED";
 };
 
+type PdfJsWorkerGlobal = typeof globalThis & {
+  pdfjsWorker?: unknown;
+};
+
 async function sha256(value: string) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -18,6 +22,8 @@ async function sha256(value: string) {
 
 export async function extractEvidencePdf(buffer: ArrayBuffer): Promise<EvidenceExtractionResult> {
   const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjsWorker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+  (globalThis as PdfJsWorkerGlobal).pdfjsWorker = pdfjsWorker;
   const documentOptions = { data: new Uint8Array(buffer), disableWorker: true } as Parameters<typeof getDocument>[0];
   const pdf = await getDocument(documentOptions).promise;
   const pages: EvidencePageExtraction[] = [];
