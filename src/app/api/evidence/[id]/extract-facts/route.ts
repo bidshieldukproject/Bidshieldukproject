@@ -53,7 +53,7 @@ export async function POST(_request: Request, context: RouteContext) {
       ...row.provenance_metadata,
       evidence_facts: facts,
       facts_extraction: {
-        provider: "Google Gemini Flash",
+        provider: "OpenRouter",
         model: extraction.model,
         policy_version: extraction.policyVersion,
         prompt_version: extraction.promptVersion,
