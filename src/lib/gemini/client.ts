@@ -1,35 +1,16 @@
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
-const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini";
+const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const RETRY_DELAYS_MS = [2000, 5000, 15000];
 
 export const GEMINI_POLICY_VERSION = "1.1";
 export const GEMINI_PROMPT_VERSION = "requirements-v1";
 
-export type GeminiPage = {
-  pageNumber: number;
-  text: string;
-};
-
+export type GeminiPage = { pageNumber: number; text: string };
 export type GeminiRequirementCandidate = {
   title: string;
   description: string;
-  type:
-    | "PARTICIPATION"
-    | "EXCLUSION"
-    | "MANDATORY_SUBMISSION"
-    | "TECHNICAL"
-    | "FINANCIAL"
-    | "INSURANCE"
-    | "QUALIFICATION"
-    | "EXPERIENCE"
-    | "AWARD_CRITERIA"
-    | "POLICY"
-    | "CONTRACT"
-    | "DEADLINE"
-    | "WORD_LIMIT"
-    | "DOCUMENT"
-    | "OTHER";
+  type: "PARTICIPATION" | "EXCLUSION" | "MANDATORY_SUBMISSION" | "TECHNICAL" | "FINANCIAL" | "INSURANCE" | "QUALIFICATION" | "EXPERIENCE" | "AWARD_CRITERIA" | "POLICY" | "CONTRACT" | "DEADLINE" | "WORD_LIMIT" | "DOCUMENT" | "OTHER";
   mandatory: boolean;
   sourcePage: number | null;
   sourceExcerpt: string | null;
@@ -41,162 +22,64 @@ export type GeminiRequirementCandidate = {
   requiredEvidence: string[];
   confidence: number;
 };
-
-export type GeminiExtractionResult = {
-  requirements: GeminiRequirementCandidate[];
-  model: string;
-  policyVersion: string;
-  promptVersion: string;
-};
+export type GeminiExtractionResult = { requirements: GeminiRequirementCandidate[]; model: string; policyVersion: string; promptVersion: string };
 
 const responseSchema = {
-  type: "OBJECT",
+  type: "object",
   properties: {
     requirements: {
-      type: "ARRAY",
+      type: "array",
       items: {
-        type: "OBJECT",
+        type: "object",
         properties: {
-          title: { type: "STRING" },
-          description: { type: "STRING" },
-          type: {
-            type: "STRING",
-            enum: [
-              "PARTICIPATION",
-              "EXCLUSION",
-              "MANDATORY_SUBMISSION",
-              "TECHNICAL",
-              "FINANCIAL",
-              "INSURANCE",
-              "QUALIFICATION",
-              "EXPERIENCE",
-              "AWARD_CRITERIA",
-              "POLICY",
-              "CONTRACT",
-              "DEADLINE",
-              "WORD_LIMIT",
-              "DOCUMENT",
-              "OTHER"
-            ]
-          },
-          mandatory: { type: "BOOLEAN" },
-          sourcePage: { type: "INTEGER", nullable: true },
-          sourceExcerpt: { type: "STRING", nullable: true },
-          deadline: { type: "STRING", nullable: true },
-          amount: { type: "NUMBER", nullable: true },
-          currency: { type: "STRING", nullable: true },
-          weight: { type: "NUMBER", nullable: true },
-          wordLimit: { type: "INTEGER", nullable: true },
-          requiredEvidence: { type: "ARRAY", items: { type: "STRING" } },
-          confidence: { type: "NUMBER" }
+          title: { type: "string" }, description: { type: "string" },
+          type: { type: "string", enum: ["PARTICIPATION", "EXCLUSION", "MANDATORY_SUBMISSION", "TECHNICAL", "FINANCIAL", "INSURANCE", "QUALIFICATION", "EXPERIENCE", "AWARD_CRITERIA", "POLICY", "CONTRACT", "DEADLINE", "WORD_LIMIT", "DOCUMENT", "OTHER"] },
+          mandatory: { type: "boolean" }, sourcePage: { type: ["integer", "null"] }, sourceExcerpt: { type: ["string", "null"] }, deadline: { type: ["string", "null"] }, amount: { type: ["number", "null"] }, currency: { type: ["string", "null"] }, weight: { type: ["number", "null"] }, wordLimit: { type: ["integer", "null"] }, requiredEvidence: { type: "array", items: { type: "string" } }, confidence: { type: "number" }
         },
-        required: [
-          "title",
-          "description",
-          "type",
-          "mandatory",
-          "sourcePage",
-          "sourceExcerpt",
-          "deadline",
-          "amount",
-          "currency",
-          "weight",
-          "wordLimit",
-          "requiredEvidence",
-          "confidence"
-        ]
+        required: ["title", "description", "type", "mandatory", "sourcePage", "sourceExcerpt", "deadline", "amount", "currency", "weight", "wordLimit", "requiredEvidence", "confidence"],
+        additionalProperties: false
       }
     }
   },
-  required: ["requirements"]
+  required: ["requirements"],
+  additionalProperties: false
 };
 
 function buildPrompt(pages: GeminiPage[]) {
-  const pageText = pages
-    .map((page) => `--- PAGE ${page.pageNumber} ---\n${page.text}`)
-    .join("\n\n");
-
-  return `Extract explicit procurement requirements from the page-labelled tender text below.
-
-Rules:
-- Extract only requirements stated or directly evidenced in the source text. Do not infer missing obligations.
-- Preserve page numbers and copy a short exact source excerpt for every requirement.
-- Use null for absent dates, amounts, currencies, weights, word limits, or page references.
-- Classify each requirement using the supplied enum. Use OTHER only when no more specific class applies.
-- A requirement is mandatory only when the source uses binding language or clearly makes it a condition of participation/submission.
-- Keep dates in ISO 8601 format where unambiguous; otherwise use null.
-- Confidence is an extraction confidence from 0 to 1, not a compliance decision.
-- Do not state that a supplier meets a requirement. This is requirement extraction only.
-- Return JSON matching the response schema and nothing else.
-
-${pageText}`;
-}
-
-function retryableError(status: number, attempts: number) {
-  return `[RETRYABLE_PROVIDER_ERROR] Gemini extraction failed with status ${status} after ${attempts} attempts. Please retry later.`;
+  return `Extract explicit procurement requirements from the page-labelled tender text below.\n\nRules:\n- Extract only requirements stated or directly evidenced in the source text. Do not infer missing obligations.\n- Preserve page numbers and copy a short exact source excerpt for every requirement.\n- Use null for absent dates, amounts, currencies, weights, word limits, or page references.\n- Classify each requirement using the supplied enum.\n- A requirement is mandatory only when the source uses binding language or clearly makes it a condition of participation/submission.\n- Keep dates in ISO 8601 format where unambiguous; otherwise use null.\n- Confidence is extraction confidence from 0 to 1, not a compliance decision.\n- Do not state that a supplier meets a requirement. This is requirement extraction only.\n- Return JSON matching the response schema and nothing else.\n\n${pages.map((page) => `--- PAGE ${page.pageNumber} ---\n${page.text}`).join("\n\n")}`;
 }
 
 export async function extractRequirementsWithGemini(pages: GeminiPage[]): Promise<GeminiExtractionResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("Gemini is not configured for this environment.");
-  }
-  if (pages.length === 0) {
-    throw new Error("No readable tender pages are available for requirement extraction.");
-  }
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error("OpenRouter is not configured for this environment.");
+  if (pages.length === 0) throw new Error("No readable tender pages are available for requirement extraction.");
 
-  const requestBody = JSON.stringify({
-    systemInstruction: {
-      parts: [{ text: "You are BidShield's evidence-grounded procurement extraction engine. Follow policy version 1.1. Never invent facts." }]
-    },
-    contents: [{ role: "user", parts: [{ text: buildPrompt(pages) }] }],
-    generationConfig: {
-      temperature: 0.1,
-      responseMimeType: "application/json",
-      responseSchema
-    }
+  const body = JSON.stringify({
+    model: OPENROUTER_MODEL,
+    temperature: 0.1,
+    messages: [
+      { role: "system", content: "You are BidShield's evidence-grounded procurement extraction engine. Follow policy version 1.1. Never invent facts." },
+      { role: "user", content: buildPrompt(pages) }
+    ],
+    response_format: { type: "json_schema", json_schema: { name: "requirements_extraction", strict: true, schema: responseSchema } }
   });
 
   let response: Response | null = null;
   for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt += 1) {
-    response = await fetch(`${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: requestBody,
-      cache: "no-store"
-    });
+    response = await fetch(OPENROUTER_API_URL, { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL ?? "https://bidshield.app", "X-Title": "BidShield" }, body, cache: "no-store" });
     if (response.ok) break;
-    if (!RETRYABLE_STATUS_CODES.has(response.status)) {
-      throw new Error(`Gemini extraction failed with status ${response.status}. This provider or model configuration requires attention.`);
-    }
-    if (attempt < RETRY_DELAYS_MS.length - 1) {
-      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
-    }
+    if (!RETRYABLE_STATUS_CODES.has(response.status)) throw new Error(`OpenRouter extraction failed with status ${response.status}. Provider or model configuration requires attention.`);
+    if (attempt < RETRY_DELAYS_MS.length - 1) await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
   }
+  if (!response?.ok) throw new Error(`[RETRYABLE_PROVIDER_ERROR] OpenRouter extraction failed with status ${response?.status ?? 503} after ${RETRY_DELAYS_MS.length} attempts. Please retry later.`);
 
-  if (!response?.ok) {
-    throw new Error(retryableError(response?.status ?? 503, RETRY_DELAYS_MS.length));
-  }
-
-  const payload = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-  const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("").trim();
-  if (!text) {
-    throw new Error("Gemini returned no structured extraction result.");
-  }
-
-  let parsed: { requirements?: GeminiRequirementCandidate[] };
+  const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
+  const text = payload.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error("OpenRouter returned no structured extraction result.");
   try {
-    parsed = JSON.parse(text) as { requirements?: GeminiRequirementCandidate[] };
+    const parsed = JSON.parse(text) as { requirements?: GeminiRequirementCandidate[] };
+    return { requirements: Array.isArray(parsed.requirements) ? parsed.requirements : [], model: OPENROUTER_MODEL, policyVersion: GEMINI_POLICY_VERSION, promptVersion: GEMINI_PROMPT_VERSION };
   } catch {
-    throw new Error("Gemini returned invalid structured JSON.");
+    throw new Error("OpenRouter returned invalid structured JSON.");
   }
-
-  return {
-    requirements: Array.isArray(parsed.requirements) ? parsed.requirements : [],
-    model: GEMINI_MODEL,
-    policyVersion: GEMINI_POLICY_VERSION,
-    promptVersion: GEMINI_PROMPT_VERSION
-  };
 }

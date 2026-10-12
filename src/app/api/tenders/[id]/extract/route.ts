@@ -100,7 +100,7 @@ export async function POST(_request: Request, context: RouteContext) {
       confidence: normalized.confidence,
       provenance_state: "AI_ESTIMATE",
       provenance_metadata: {
-        provider: "Google Gemini Flash",
+        provider: "OpenRouter",
         model: extraction.model,
         policy_version: extraction.policyVersion,
         prompt_version: extraction.promptVersion,
@@ -131,7 +131,7 @@ export async function POST(_request: Request, context: RouteContext) {
         tender_title: tender.title,
         source_document_id: document.id,
         source_document_name: document.document_name,
-        provider: "Google Gemini Flash",
+        provider: "OpenRouter",
         model: extraction.model,
         policy_version: extraction.policyVersion,
         prompt_version: extraction.promptVersion,
@@ -150,7 +150,7 @@ export async function POST(_request: Request, context: RouteContext) {
       provenance_metadata: {
         extraction_method: "pdfjs",
         requirement_extraction: {
-          provider: "Google Gemini Flash",
+          provider: "OpenRouter",
           model: extraction.model,
           extraction_run_id: extractionRunId,
           policy_version: extraction.policyVersion,
