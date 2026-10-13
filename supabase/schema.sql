@@ -259,6 +259,61 @@ $$;
 revoke all on function public.current_user_organization_id() from public;
 grant execute on function public.current_user_organization_id() to authenticated;
 
+create or replace function public.create_organization_with_owner(
+  p_organization_name text,
+  p_display_name text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $function$
+declare
+  caller_id uuid := auth.uid();
+  new_organization_id uuid;
+  normalized_name text := btrim(p_organization_name);
+begin
+  if caller_id is null then
+    raise exception 'Authentication is required to create an organization.'
+      using errcode = '28000';
+  end if;
+
+  if normalized_name is null or char_length(normalized_name) < 2 then
+    raise exception 'Organization name must contain at least two characters.'
+      using errcode = '22023';
+  end if;
+
+  if exists (
+    select 1
+    from public.users as existing_membership
+    where existing_membership.auth_user_id = caller_id
+  ) then
+    raise exception 'This account already has an organization membership.'
+      using errcode = '23505';
+  end if;
+
+  insert into public.organizations (name, created_by)
+  values (normalized_name, caller_id)
+  returning id into new_organization_id;
+
+  insert into public.users (auth_user_id, organization_id, role, display_name)
+  values (
+    caller_id,
+    new_organization_id,
+    'owner',
+    nullif(btrim(p_display_name), '')
+  );
+
+  return new_organization_id;
+end;
+$function$;
+
+revoke all on function public.create_organization_with_owner(text, text)
+  from public, anon, authenticated;
+grant execute on function public.create_organization_with_owner(text, text)
+  to authenticated;
+revoke insert on table public.users from public, anon, authenticated;
+
 alter table public.organizations enable row level security;
 alter table public.users enable row level security;
 alter table public.tenders enable row level security;
@@ -286,10 +341,6 @@ create policy organizations_update_same_tenant on public.organizations
 create policy users_select_same_tenant on public.users
   for select to authenticated
   using (organization_id = public.current_user_organization_id() or auth_user_id = auth.uid());
-
-create policy users_insert_own_membership on public.users
-  for insert to authenticated
-  with check (auth_user_id = auth.uid());
 
 create policy users_update_same_tenant on public.users
   for update to authenticated

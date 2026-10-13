@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test:matching": "tsx src/lib/matching/matching.regression.test.ts",
-    "test:qa": "tsx src/lib/qa/evaluateSubmissionReadiness.test.ts"
+    "test:qa": "tsx src/lib/qa/evaluateSubmissionReadiness.test.ts",
+    "test:membership-security": "tsx src/lib/supabase/membershipSecurity.regression.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
